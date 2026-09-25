@@ -1,0 +1,1002 @@
+/**
+ * Doug's Journal v1.8
+ * Google Apps Script backend
+ *
+ * Included in v1.2:
+ * - Persistent PIN login with 7-day sliding inactivity expiration
+ * - PIN stored as salted SHA-256 hash (not plaintext)
+ * - Markdown ZIP export with attachments
+ *
+ * First-time setup:
+ * 1. Create a blank Google Sheet and open Extensions > Apps Script.
+ * 2. Add Code.gs, Index.html, Styles.html, and Script.html.
+ * 3. Run setupJournal() once.
+ * 4. Reload the spreadsheet, then use Journal > Set / Change PIN.
+ *    (Fallback: enter a 4-12 digit PIN beside pinSetup in Settings and run setJournalPin().)
+ * 5. Deploy as a Web app: Execute as Me; access Everyone/Anyone.
+ * 6. Use the /exec deployment URL, not the /dev test URL.
+ */
+
+const APP = Object.freeze({
+  VERSION: '1.2.0',
+  ENTRIES: 'Entries',
+  ATTACHMENTS: 'Attachments',
+  SETTINGS: 'Settings',
+  DEFAULT_PAGE_SIZE: 60,
+  SESSION_IDLE_MS: 7 * 24 * 60 * 60 * 1000,
+  SESSION_TOUCH_MS: 5 * 60 * 1000,
+  SESSION_STORE_KEY: 'WJ_AUTH_SESSIONS_V1',
+  ENTRY_HEADERS: [
+    'Entry ID', 'Date', 'Time', 'Title', 'Body HTML', 'Body Text',
+    'Tags', 'Mood', 'Location Name', 'Latitude', 'Longitude',
+    'Favorite', 'Created', 'Updated'
+  ],
+  ATTACHMENT_HEADERS: [
+    'Attachment ID', 'Entry ID', 'File Name', 'MIME Type',
+    'Drive File ID', 'Size', 'Created'
+  ],
+  SETTING_HEADERS: ['Setting', 'Value']
+});
+
+function doGet() {
+  return HtmlService.createHtmlOutputFromFile('Index')
+    .setTitle("Doug's Journal")
+    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL)
+    .addMetaTag('viewport', 'width=device-width, initial-scale=1, viewport-fit=cover');
+}
+
+/**
+ * Adds a small setup menu to the bound spreadsheet.
+ */
+function onOpen() {
+  SpreadsheetApp.getUi()
+    .createMenu('Journal')
+    .addItem('Initialize / Repair Journal', 'setupJournal')
+    .addItem('Set / Change PIN', 'setJournalPinFromPrompt')
+    .addToUi();
+}
+
+/**
+ * Preferred PIN setup method. Run from the Journal menu in the spreadsheet.
+ * The PIN is never written to a sheet cell.
+ */
+function setJournalPinFromPrompt() {
+  const ui = SpreadsheetApp.getUi();
+
+  const first = ui.prompt(
+    'Set Journal PIN',
+    'Enter a 4-12 digit PIN:',
+    ui.ButtonSet.OK_CANCEL
+  );
+
+  if (first.getSelectedButton() !== ui.Button.OK) return;
+
+  const pin = String(first.getResponseText() || '').trim();
+
+  if (!/^\d{4,12}$/.test(pin)) {
+    ui.alert('The PIN must contain 4-12 digits only.');
+    return;
+  }
+
+  const second = ui.prompt(
+    'Confirm Journal PIN',
+    'Enter the same PIN again:',
+    ui.ButtonSet.OK_CANCEL
+  );
+
+  if (second.getSelectedButton() !== ui.Button.OK) return;
+
+  if (String(second.getResponseText() || '').trim() !== pin) {
+    ui.alert('The two PINs did not match.');
+    return;
+  }
+
+  savePinHash_(pin);
+  ui.alert('Journal PIN saved. All previously signed-in browsers have been logged out.');
+}
+
+/**
+ * Run once from the Apps Script editor.
+ */
+function setupJournal() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  ensureSheet_(ss, APP.ENTRIES, APP.ENTRY_HEADERS);
+  ensureSheet_(ss, APP.ATTACHMENTS, APP.ATTACHMENT_HEADERS);
+  ensureSheet_(ss, APP.SETTINGS, APP.SETTING_HEADERS);
+
+  const current = getSettings_();
+
+  if (!current.driveFolderId) {
+    const folder = DriveApp.createFolder("Doug's Journal Attachments");
+    upsertSetting_('driveFolderId', folder.getId());
+  } else {
+    try {
+      const folder = DriveApp.getFolderById(current.driveFolderId);
+      if (folder.getName() !== "Doug's Journal Attachments") {
+        folder.setName("Doug's Journal Attachments");
+      }
+    } catch (error) {}
+  }
+
+  if (!current.theme) upsertSetting_('theme', 'system');
+  if (!current.accent) upsertSetting_('accent', '#49657a');
+  if (!current.photoMaxPx) upsertSetting_('photoMaxPx', '1600');
+  if (!current.photoQuality) upsertSetting_('photoQuality', '0.82');
+
+  // pinSetup is intentionally temporary. The user types a PIN here and then
+  // runs setJournalPin(), which hashes it and clears this field.
+  if (!Object.prototype.hasOwnProperty.call(current, 'pinSetup')) {
+    upsertSetting_('pinSetup', '');
+  }
+
+  [APP.ENTRIES, APP.ATTACHMENTS, APP.SETTINGS].forEach(name => {
+    const sh = ss.getSheetByName(name);
+    sh.setFrozenRows(1);
+    sh.getRange(1, 1, 1, sh.getLastColumn()).setFontWeight('bold');
+    sh.autoResizeColumns(1, sh.getLastColumn());
+  });
+
+  return {
+    ok: true,
+    message: 'Journal initialized. Reload the spreadsheet and use Journal > Set / Change PIN.'
+  };
+}
+
+/**
+ * Enter the desired PIN in Settings! beside the pinSetup row, then run this
+ * function from the Apps Script editor. The plaintext PIN is immediately
+ * cleared and only a salted hash is retained.
+ */
+function setJournalPin() {
+  const settings = getSettings_();
+  const pin = String(settings.pinSetup || '').trim();
+
+  if (!/^\d{4,12}$/.test(pin)) {
+    throw new Error('Enter a 4-12 digit PIN beside pinSetup in the Settings sheet, then run setJournalPin() again.');
+  }
+
+  savePinHash_(pin);
+  upsertSetting_('pinSetup', '');
+
+  return 'PIN saved. The plaintext PIN has been cleared from the Settings sheet.';
+}
+
+function savePinHash_(pin) {
+  const salt = randomToken_();
+  const hash = hashPin_(pin, salt);
+
+  upsertSetting_('pinSalt', salt);
+  upsertSetting_('pinHash', hash);
+  upsertSetting_('pinSetup', '');
+
+  // Changing the PIN logs out every browser/device.
+  PropertiesService.getScriptProperties().deleteProperty(APP.SESSION_STORE_KEY);
+}
+
+/**
+ * Single browser-to-server entry point.
+ *
+ * The client deliberately calls only this fixed Apps Script function instead
+ * of dynamically looking up google.script.run methods. This is more reliable
+ * across mobile browsers and content blockers.
+ */
+function api(action, authToken, args) {
+  action = String(action || '');
+  args = Array.isArray(args) ? args : [];
+
+  switch (action) {
+    // Public actions
+    case 'authenticatePin':
+      return authenticatePin(args[0]);
+
+    case 'checkSession':
+      return checkSession(args[0]);
+
+    case 'logoutSession':
+      return logoutSession(args[0]);
+
+    // Authenticated actions
+    case 'getBootstrap':
+      return getBootstrap(authToken);
+
+    case 'listEntries':
+      return listEntries(args[0] || {}, authToken);
+
+    case 'getEntry':
+      return getEntry(args[0], authToken);
+
+    case 'saveEntry':
+      return saveEntry(args[0] || {}, authToken);
+
+    case 'deleteEntry':
+      return deleteEntry(args[0], authToken);
+
+    case 'uploadAttachment':
+      return uploadAttachment(args[0] || {}, authToken);
+
+    case 'deleteAttachment':
+      return deleteAttachment(args[0], authToken);
+
+    case 'getAttachmentData':
+      return getAttachmentData(args[0], args[1], authToken);
+
+    case 'getCalendarMonth':
+      return getCalendarMonth(args[0], args[1], authToken);
+
+    case 'getOnThisDay':
+      return getOnThisDay(args[0], args[1], authToken);
+
+    case 'getGallery':
+      return getGallery(args[0], args[1], authToken);
+
+    case 'getMapEntries':
+      return getMapEntries(authToken);
+
+    case 'saveSettings':
+      return saveSettings(args[0] || {}, authToken);
+
+    case 'exportJournalJson':
+      return exportJournalJson(authToken);
+
+    case 'createBackupZip':
+      return createBackupZip(authToken);
+
+    case 'createMarkdownBackup':
+      return createMarkdownBackup(authToken);
+
+    default:
+      throw new Error('UNKNOWN_ACTION');
+  }
+}
+
+/**
+ * Public authentication endpoint. Does not require an existing session.
+ */
+function authenticatePin(pin) {
+  const settings = getSettings_();
+
+  if (!settings.pinHash || !settings.pinSalt) {
+    throw new Error('PIN_NOT_CONFIGURED');
+  }
+
+  const supplied = String(pin || '').trim();
+
+  // Deliberately add a small delay to failed PIN attempts.
+  if (!/^\d{4,12}$/.test(supplied) || hashPin_(supplied, settings.pinSalt) !== settings.pinHash) {
+    Utilities.sleep(650);
+    throw new Error('INVALID_PIN');
+  }
+
+  const token = randomToken_() + randomToken_();
+  const now = Date.now();
+  const sessions = readSessions_();
+
+  cleanupSessions_(sessions, now);
+  sessions[hashSessionToken_(token)] = now;
+  writeSessions_(sessions);
+
+  return {
+    ok: true,
+    token,
+    idleDays: 7
+  };
+}
+
+/**
+ * Public endpoint used on page load to see whether the locally stored token is
+ * still valid. A successful check counts as use and slides the expiration.
+ */
+function checkSession(token) {
+  return { valid: touchSession_(token) };
+}
+
+/**
+ * Public endpoint. Invalidating a missing/expired token is harmless.
+ */
+function logoutSession(token) {
+  if (!token) return true;
+
+  const sessions = readSessions_();
+  delete sessions[hashSessionToken_(String(token))];
+  writeSessions_(sessions);
+  return true;
+}
+
+function getBootstrap(authToken) {
+  requireAuth_(authToken);
+
+  const settings = getPublicSettings_();
+  const entries = listEntries({ limit: 40, offset: 0 }, authToken);
+
+  return {
+    appVersion: APP.VERSION,
+    settings,
+    tags: getAllTags_(),
+    recentEntries: entries.items,
+    totalEntries: entries.total,
+    today: Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd')
+  };
+}
+
+function listEntries(filters, authToken) {
+  requireAuth_(authToken);
+  filters = filters || {};
+
+  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(APP.ENTRIES);
+  if (!sh || sh.getLastRow() < 2) return { items: [], total: 0 };
+
+  const rows = sh.getRange(2, 1, sh.getLastRow() - 1, APP.ENTRY_HEADERS.length).getValues();
+  let items = rows.map((r, i) => entryRowToObject_(r, i + 2));
+
+  const query = String(filters.query || '').trim().toLowerCase();
+  const tag = String(filters.tag || '').trim().toLowerCase();
+  const year = filters.year ? Number(filters.year) : null;
+  const month = filters.month ? Number(filters.month) : null;
+  const favoriteOnly = filters.favorite === true || filters.favorite === 'true';
+
+  if (query) {
+    items = items.filter(e =>
+      [e.title, e.bodyText, e.tags, e.mood, e.locationName]
+        .join(' ')
+        .toLowerCase()
+        .includes(query)
+    );
+  }
+
+  if (tag) {
+    items = items.filter(e =>
+      splitTags_(e.tags).some(t => t.toLowerCase() === tag)
+    );
+  }
+
+  if (favoriteOnly) items = items.filter(e => e.favorite);
+
+  if (year || month) {
+    items = items.filter(e => {
+      const parts = e.date.split('-').map(Number);
+      return (!year || parts[0] === year) && (!month || parts[1] === month);
+    });
+  }
+
+  items.sort((a, b) => {
+    const ka = `${a.date}T${a.time || '00:00'}`;
+    const kb = `${b.date}T${b.time || '00:00'}`;
+    return kb.localeCompare(ka);
+  });
+
+  const total = items.length;
+  const offset = Math.max(0, Number(filters.offset || 0));
+  const limit = Math.max(1, Math.min(250, Number(filters.limit || APP.DEFAULT_PAGE_SIZE)));
+  items = items.slice(offset, offset + limit);
+
+  const firstPhotoMap = getFirstPhotoMap_(items.map(x => x.id));
+  items.forEach(e => e.firstPhotoId = firstPhotoMap[e.id] || '');
+
+  return { items, total };
+}
+
+function getEntry(entryId, authToken) {
+  requireAuth_(authToken);
+
+  const found = findEntryRow_(entryId);
+  if (!found) throw new Error('Entry not found.');
+
+  const entry = entryRowToObject_(found.values, found.row);
+  entry.attachments = getAttachmentsForEntry_(entryId);
+  return entry;
+}
+
+function saveEntry(entry, authToken) {
+  requireAuth_(authToken);
+  if (!entry) throw new Error('No entry supplied.');
+
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+
+  try {
+    const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(APP.ENTRIES);
+    const now = new Date();
+    const id = String(entry.id || '').trim() || Utilities.getUuid();
+    const existing = findEntryRow_(id);
+
+    const date = normalizeDate_(entry.date);
+    const time = normalizeTime_(entry.time);
+    const title = cleanText_(entry.title, 300);
+    const bodyHtml = sanitizeBasicHtml_(String(entry.bodyHtml || ''));
+    const bodyText = cleanText_(entry.bodyText || stripHtml_(bodyHtml), 100000);
+    const tags = splitTags_(entry.tags).join(', ');
+    const mood = cleanText_(entry.mood, 80);
+    const locationName = cleanText_(entry.locationName, 250);
+    const lat = finiteOrBlank_(entry.latitude);
+    const lng = finiteOrBlank_(entry.longitude);
+    const favorite = entry.favorite === true || entry.favorite === 'true';
+
+    let created = now;
+    if (existing) created = existing.values[12] || now;
+
+    const row = [
+      id, date, time, title, bodyHtml, bodyText, tags, mood,
+      locationName, lat, lng, favorite, created, now
+    ];
+
+    if (existing) {
+      sh.getRange(existing.row, 1, 1, row.length).setValues([row]);
+    } else {
+      sh.appendRow(row);
+    }
+
+    const saved = findEntryRow_(id);
+    const result = entryRowToObject_(saved.values, saved.row);
+    result.attachments = getAttachmentsForEntry_(id);
+    return result;
+
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function deleteEntry(entryId, authToken) {
+  requireAuth_(authToken);
+
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+
+  try {
+    getAttachmentsForEntry_(entryId).forEach(a => {
+      try {
+        DriveApp.getFileById(a.driveFileId).setTrashed(true);
+      } catch (err) {}
+      deleteAttachmentRow_(a.id);
+    });
+
+    const found = findEntryRow_(entryId);
+    if (!found) return false;
+
+    SpreadsheetApp.getActiveSpreadsheet().getSheetByName(APP.ENTRIES).deleteRow(found.row);
+    return true;
+
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function uploadAttachment(payload, authToken) {
+  requireAuth_(authToken);
+
+  if (!payload || !payload.entryId || !payload.dataUrl) {
+    throw new Error('Invalid attachment.');
+  }
+
+  const match = String(payload.dataUrl).match(/^data:([^;]+);base64,(.+)$/);
+  if (!match) throw new Error('Invalid file data.');
+
+  const mime = match[1];
+  const bytes = Utilities.base64Decode(match[2]);
+  const filename = cleanFilename_(payload.fileName || 'attachment');
+  const folder = getAttachmentFolder_();
+  const blob = Utilities.newBlob(bytes, mime, filename);
+  const file = folder.createFile(blob);
+
+  const id = Utilities.getUuid();
+  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(APP.ATTACHMENTS);
+
+  sh.appendRow([
+    id,
+    String(payload.entryId),
+    filename,
+    mime,
+    file.getId(),
+    bytes.length,
+    new Date()
+  ]);
+
+  return {
+    id,
+    entryId: String(payload.entryId),
+    fileName: filename,
+    mimeType: mime,
+    size: bytes.length,
+    created: new Date().toISOString()
+  };
+}
+
+function deleteAttachment(attachmentId, authToken) {
+  requireAuth_(authToken);
+
+  const found = findAttachmentRow_(attachmentId);
+  if (!found) return false;
+
+  try {
+    DriveApp.getFileById(found.obj.driveFileId).setTrashed(true);
+  } catch (err) {}
+
+  SpreadsheetApp.getActiveSpreadsheet().getSheetByName(APP.ATTACHMENTS).deleteRow(found.row);
+  return true;
+}
+
+function getAttachmentData(attachmentId, thumbnail, authToken) {
+  requireAuth_(authToken);
+
+  const found = findAttachmentRow_(attachmentId);
+  if (!found) throw new Error('Attachment not found.');
+
+  const file = DriveApp.getFileById(found.obj.driveFileId);
+  const blob = file.getBlob();
+  const bytes = blob.getBytes();
+
+  return {
+    id: found.obj.id,
+    fileName: found.obj.fileName,
+    mimeType: found.obj.mimeType,
+    size: found.obj.size,
+    dataUrl: `data:${found.obj.mimeType};base64,${Utilities.base64Encode(bytes)}`
+  };
+}
+
+function getCalendarMonth(year, month, authToken) {
+  requireAuth_(authToken);
+
+  const results = listEntries({ year, month, limit: 250, offset: 0 }, authToken);
+  const byDate = {};
+
+  results.items.forEach(e => {
+    if (!byDate[e.date]) byDate[e.date] = [];
+    byDate[e.date].push({
+      id: e.id,
+      title: e.title,
+      time: e.time,
+      favorite: e.favorite,
+      mood: e.mood
+    });
+  });
+
+  return byDate;
+}
+
+function getOnThisDay(month, day, authToken) {
+  requireAuth_(authToken);
+
+  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(APP.ENTRIES);
+  if (!sh || sh.getLastRow() < 2) return [];
+
+  const rows = sh.getRange(2, 1, sh.getLastRow() - 1, APP.ENTRY_HEADERS.length).getValues();
+  const mm = String(month).padStart(2, '0');
+  const dd = String(day).padStart(2, '0');
+  const suffix = `-${mm}-${dd}`;
+
+  const items = rows
+    .map((r, i) => entryRowToObject_(r, i + 2))
+    .filter(e => e.date.endsWith(suffix))
+    .sort((a, b) => b.date.localeCompare(a.date));
+
+  const firstPhotoMap = getFirstPhotoMap_(items.map(x => x.id));
+  items.forEach(e => e.firstPhotoId = firstPhotoMap[e.id] || '');
+  return items;
+}
+
+function getGallery(limit, offset, authToken) {
+  requireAuth_(authToken);
+
+  limit = Math.max(1, Math.min(200, Number(limit || 80)));
+  offset = Math.max(0, Number(offset || 0));
+
+  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(APP.ATTACHMENTS);
+  if (!sh || sh.getLastRow() < 2) return { items: [], total: 0 };
+
+  let items = sh.getRange(2, 1, sh.getLastRow() - 1, APP.ATTACHMENT_HEADERS.length)
+    .getValues()
+    .map((r, i) => attachmentRowToObject_(r, i + 2))
+    .filter(a => String(a.mimeType).startsWith('image/'));
+
+  const entryMap = getEntrySummaryMap_([...new Set(items.map(x => x.entryId))]);
+
+  items = items.map(a => ({
+    ...a,
+    entryDate: entryMap[a.entryId]?.date || '',
+    entryTitle: entryMap[a.entryId]?.title || ''
+  }));
+
+  items.sort((a, b) => String(b.created).localeCompare(String(a.created)));
+  const total = items.length;
+
+  return { items: items.slice(offset, offset + limit), total };
+}
+
+function getMapEntries(authToken) {
+  requireAuth_(authToken);
+
+  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(APP.ENTRIES);
+  if (!sh || sh.getLastRow() < 2) return [];
+
+  return sh.getRange(2, 1, sh.getLastRow() - 1, APP.ENTRY_HEADERS.length)
+    .getValues()
+    .map((r, i) => entryRowToObject_(r, i + 2))
+    .filter(e => Number.isFinite(Number(e.latitude)) && Number.isFinite(Number(e.longitude)))
+    .map(e => ({
+      id: e.id,
+      date: e.date,
+      title: e.title,
+      locationName: e.locationName,
+      latitude: Number(e.latitude),
+      longitude: Number(e.longitude)
+    }));
+}
+
+function saveSettings(settings, authToken) {
+  requireAuth_(authToken);
+  settings = settings || {};
+
+  const allowed = ['theme', 'accent', 'photoMaxPx', 'photoQuality'];
+
+  allowed.forEach(key => {
+    if (Object.prototype.hasOwnProperty.call(settings, key)) {
+      upsertSetting_(key, String(settings[key]));
+    }
+  });
+
+  return getPublicSettings_();
+}
+
+function exportJournalJson(authToken) {
+  requireAuth_(authToken);
+  const allEntries = getAllEntries_();
+
+  const detailed = allEntries.map(e => {
+    const attachments = getAttachmentsForEntry_(e.id);
+    return {
+      ...e,
+      attachments: attachments.map(a => ({
+        id: a.id,
+        fileName: a.fileName,
+        mimeType: a.mimeType,
+        size: a.size,
+        driveFileId: a.driveFileId
+      }))
+    };
+  });
+
+  return JSON.stringify({
+    format: "Doug's Journal Export",
+    version: APP.VERSION,
+    exportedAt: new Date().toISOString(),
+    entries: detailed
+  }, null, 2);
+}
+
+function createBackupZip(authToken) {
+  requireAuth_(authToken);
+
+  const json = exportJournalJson(authToken);
+  const blobs = [
+    Utilities.newBlob(json, 'application/json', 'journal.json')
+  ];
+
+  getAllAttachments_().forEach(a => {
+    try {
+      const original = DriveApp.getFileById(a.driveFileId).getBlob();
+      original.setName(`attachments/${a.id}__${safeZipFilename_(a.fileName)}`);
+      blobs.push(original);
+    } catch (err) {}
+  });
+
+  const stamp = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd_HHmm');
+  const zip = Utilities.zip(blobs, `Dougs_Journal_Backup_${stamp}.zip`);
+  const exportFolder = getOrCreateChildFolder_(getAttachmentFolder_(), 'Exports');
+  const file = exportFolder.createFile(zip);
+
+  return {
+    name: file.getName(),
+    url: file.getUrl(),
+    size: file.getSize()
+  };
+}
+
+/**
+ * Creates a portable Markdown archive in Google Drive.
+ *
+ * Structure inside ZIP:
+ *   README.md
+ *   entries/2026/09/2026-09-25_0915__title__abc12345.md
+ *   attachments/<attachment-id>__filename.jpg
+ *
+ * Each Markdown entry includes YAML-style metadata and relative links to any
+ * attachments. This makes the archive usable without this app.
+ */
+function createMarkdownBackup(authToken) {
+  requireAuth_(authToken);
+
+  const entries = getAllEntries_();
+  const attachments = getAllAttachments_();
+  const attachmentsByEntry = {};
+
+  attachments.forEach(a => {
+    if (!attachmentsByEntry[a.entryId]) attachmentsByEntry[a.entryId] = [];
+    attachmentsByEntry[a.entryId].push(a);
+  });
+
+  const blobs = [];
+
+  const readme = [
+    "# Doug's Journal Markdown Export",
+    '',
+    `Exported: ${new Date().toISOString()}`,
+    '',
+    'Each journal entry is an ordinary Markdown file.',
+    'Attachments are stored in the attachments folder and linked with relative paths.',
+    'The original rich-text HTML is not required to read this archive.',
+    ''
+  ].join('\n');
+
+  blobs.push(Utilities.newBlob(readme, 'text/markdown', 'README.md'));
+
+  entries.forEach(entry => {
+    const entryAttachments = attachmentsByEntry[entry.id] || [];
+    const markdown = entryToMarkdown_(entry, entryAttachments);
+    const path = markdownEntryPath_(entry);
+    blobs.push(Utilities.newBlob(markdown, 'text/markdown', path));
+  });
+
+  attachments.forEach(a => {
+    try {
+      const blob = DriveApp.getFileById(a.driveFileId).getBlob();
+      blob.setName(`attachments/${a.id}__${safeZipFilename_(a.fileName)}`);
+      blobs.push(blob);
+    } catch (err) {}
+  });
+
+  const stamp = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd_HHmm');
+  const zip = Utilities.zip(blobs, `Dougs_Journal_Markdown_${stamp}.zip`);
+  const exportFolder = getOrCreateChildFolder_(getAttachmentFolder_(), 'Exports');
+  const file = exportFolder.createFile(zip);
+
+  return {
+    name: file.getName(),
+    url: file.getUrl(),
+    size: file.getSize(),
+    entries: entries.length,
+    attachments: attachments.length
+  };
+}
+
+/* ---------------- Authentication helpers ---------------- */
+
+function requireAuth_(token) {
+  if (!touchSession_(token)) {
+    throw new Error('AUTH_REQUIRED');
+  }
+}
+
+function touchSession_(token) {
+  if (!token) return false;
+
+  const now = Date.now();
+  const sessions = readSessions_();
+  const key = hashSessionToken_(String(token));
+  const lastUsed = Number(sessions[key] || 0);
+
+  cleanupSessions_(sessions, now);
+
+  if (!lastUsed || now - lastUsed > APP.SESSION_IDLE_MS) {
+    delete sessions[key];
+    writeSessions_(sessions);
+    return false;
+  }
+
+  // Avoid a PropertiesService write for every image request. Five minutes of
+  // activity counts as one touch, which is more than sufficient for a 7-day
+  // sliding expiration.
+  if (now - lastUsed >= APP.SESSION_TOUCH_MS) {
+    sessions[key] = now;
+    writeSessions_(sessions);
+  }
+
+  return true;
+}
+
+function readSessions_() {
+  const raw = PropertiesService.getScriptProperties().getProperty(APP.SESSION_STORE_KEY);
+  if (!raw) return {};
+
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch (err) {
+    return {};
+  }
+}
+
+function writeSessions_(sessions) {
+  PropertiesService.getScriptProperties().setProperty(
+    APP.SESSION_STORE_KEY,
+    JSON.stringify(sessions || {})
+  );
+}
+
+function cleanupSessions_(sessions, now) {
+  Object.keys(sessions).forEach(key => {
+    if (now - Number(sessions[key] || 0) > APP.SESSION_IDLE_MS) {
+      delete sessions[key];
+    }
+  });
+}
+
+function hashSessionToken_(token) {
+  return sha256Hex_(String(token));
+}
+
+function hashPin_(pin, salt) {
+  return sha256Hex_(`${salt}|${String(pin)}`);
+}
+
+function sha256Hex_(value) {
+  const bytes = Utilities.computeDigest(
+    Utilities.DigestAlgorithm.SHA_256,
+    String(value),
+    Utilities.Charset.UTF_8
+  );
+
+  return bytes.map(b => {
+    const n = b < 0 ? b + 256 : b;
+    return n.toString(16).padStart(2, '0');
+  }).join('');
+}
+
+function randomToken_() {
+  return Utilities.getUuid().replace(/-/g, '') + Utilities.getUuid().replace(/-/g, '');
+}
+
+/* ---------------- Markdown helpers ---------------- */
+
+function entryToMarkdown_(entry, attachments) {
+  const lines = [];
+
+  lines.push('---');
+  lines.push(`id: "${yamlEscape_(entry.id)}"`);
+  lines.push(`date: "${yamlEscape_(entry.date)}"`);
+  lines.push(`time: "${yamlEscape_(entry.time || '')}"`);
+  lines.push(`title: "${yamlEscape_(entry.title || '')}"`);
+  lines.push(`favorite: ${entry.favorite ? 'true' : 'false'}`);
+  lines.push(`mood: "${yamlEscape_(entry.mood || '')}"`);
+  lines.push(`location: "${yamlEscape_(entry.locationName || '')}"`);
+
+  if (entry.latitude !== '' && entry.longitude !== '') {
+    lines.push(`latitude: ${entry.latitude}`);
+    lines.push(`longitude: ${entry.longitude}`);
+  }
+
+  const tags = splitTags_(entry.tags);
+  lines.push(`tags: [${tags.map(t => `"${yamlEscape_(t)}"`).join(', ')}]`);
+  lines.push(`created: "${yamlEscape_(entry.created || '')}"`);
+  lines.push(`updated: "${yamlEscape_(entry.updated || '')}"`);
+  lines.push('---');
+  lines.push('');
+
+  if (entry.title) {
+    lines.push(`# ${entry.title}`);
+    lines.push('');
+  }
+
+  const body = htmlToMarkdown_(entry.bodyHtml || '', entry.bodyText || '');
+  if (body.trim()) {
+    lines.push(body.trim());
+    lines.push('');
+  }
+
+  if (attachments.length) {
+    lines.push('## Attachments');
+    lines.push('');
+
+    attachments.forEach(a => {
+      const rel = `../../../attachments/${a.id}__${safeZipFilename_(a.fileName)}`;
+      const label = a.fileName || 'attachment';
+
+      if (String(a.mimeType).startsWith('image/')) {
+        lines.push(`![${markdownEscapeText_(label)}](${markdownEscapePath_(rel)})`);
+      } else {
+        lines.push(`[${markdownEscapeText_(label)}](${markdownEscapePath_(rel)})`);
+      }
+      lines.push('');
+    });
+  }
+
+  return lines.join('\n').replace(/\n{4,}/g, '\n\n\n') + '\n';
+}
+
+function markdownEntryPath_(entry) {
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(entry.date) ? entry.date : 'undated';
+  const year = date === 'undated' ? 'undated' : date.slice(0, 4);
+  const month = date === 'undated' ? '00' : date.slice(5, 7);
+  const time = String(entry.time || '0000').replace(':', '').padEnd(4, '0').slice(0, 4);
+  const slug = slugify_(entry.title || 'entry').slice(0, 60) || 'entry';
+  const shortId = String(entry.id || 'entry').replace(/[^a-zA-Z0-9]/g, '').slice(0, 8) || 'entry';
+  return `entries/${year}/${month}/${date}_${time}__${slug}__${shortId}.md`;
+}
+
+function htmlToMarkdown_(html, fallbackText) {
+  let s = String(html || '');
+
+  if (!s.trim()) return String(fallbackText || '');
+
+  s = s
+    .replace(/\r/g, '')
+    .replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, '')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<hr\s*\/?>/gi, '\n---\n')
+    .replace(/<(strong|b)>([\s\S]*?)<\/(strong|b)>/gi, '**$2**')
+    .replace(/<(em|i)>([\s\S]*?)<\/(em|i)>/gi, '*$2*')
+    .replace(/<(s|strike|del)>([\s\S]*?)<\/(s|strike|del)>/gi, '~~$2~~')
+    .replace(/<u>([\s\S]*?)<\/u>/gi, '<u>$1</u>')
+    .replace(/<a\s+[^>]*href=(['"])(.*?)\1[^>]*>([\s\S]*?)<\/a>/gi, '[$3]($2)')
+    .replace(/<li[^>]*>/gi, '\n- ')
+    .replace(/<\/li>/gi, '')
+    .replace(/<\/(p|div|h1|h2|h3|h4|h5|h6)>/gi, '\n\n')
+    .replace(/<(p|div|ul|ol|h1|h2|h3|h4|h5|h6)[^>]*>/gi, '')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/\n[ \t]+/g, '\n')
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n{4,}/g, '\n\n\n');
+
+  return s.trim();
+}
+
+function yamlEscape_(value) {
+  return String(value || '')
+    .replace(/\\/g, '\\\\')
+    .replace(/"/g, '\\"')
+    .replace(/\r?\n/g, '\\n');
+}
+
+function markdownEscapeText_(value) {
+  return String(value || '').replace(/([\\\[\]])/g, '\\$1');
+}
+
+function markdownEscapePath_(value) {
+  return String(value || '')
+    .split('/')
+    .map(part => encodeURIComponent(part))
+    .join('/');
+}
+
+function slugify_(value) {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+/* ---------------- Data helpers ---------------- */
+
+function getAllEntries_() {
+  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(APP.ENTRIES);
+  if (!sh || sh.getLastRow() < 2) return [];
+
+  const items = sh.getRange(2, 1, sh.getLastRow() - 1, APP.ENTRY_HEADERS.length)
+    .getValues()
+    .map((r, i) => entryRowToObject_(r, i + 2));
+
+  items.sort((a, b) => {
+    const ka = `${a.date}T${a.time || '00:00'}`;
+    const kb = `${b.date}T${b.time || '00:00'}`;
+    return kb.localeCompare(ka);
+  });
+
+  return items;
+}
+
+function getAllAttachments_() {
+  const sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(APP.ATTACHMENTS);
+  if (!sh || sh.getLastRow() < 2) return [];
+
+  return sh.getRange(2, 1, sh.getLastRow() - 1, APP.ATTACHMENT_HEADERS.length)
+    .getValues()
+    .map((r, i) => attachmentRowToObject_(r, i + 2));
+}
+
+function ensureSheet_(ss, name, headers) {
+  let sh = ss.getSheetByName(name);
