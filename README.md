@@ -5,7 +5,7 @@ Live site: https://celloenthusiast.github.io/dougs-journal/
 GitHub Pages provides the stable public front door. Google Apps Script runs the
 private journal and stores journal data in Google Sheets / Drive.
 
-## Current Apps Script build: v1.4 self-contained
+## Current Apps Script build: v1.8 self-contained
 
 The Apps Script web app now needs only two runtime source files:
 
@@ -21,7 +21,7 @@ The Apps Script doGet() should be:
 ```javascript
 function doGet() {
   return HtmlService.createHtmlOutputFromFile('Index')
-    .setTitle('Wiseman Journal')
+    .setTitle('Doug's Journal')
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL)
     .addMetaTag(
       'viewport',
@@ -40,3 +40,9 @@ The GitHub wrapper already uses the account-neutral /exec URL:
 https://script.google.com/macros/s/AKfycbwp8L0guuDD7uK3pS00qiIJy9GUJusKNJumhqFlWqpGnqDBNkYO1fjiPooRYfiUNAUFdw/exec
 
 No PIN or journal content belongs in this public repository.
+
+
+## Branding
+
+All user-facing branding, backup/export names, and new attachment-folder names use **Doug's Journal**.
+The existing session-storage key remains unchanged so current signed-in browsers are not forced to log in again.
