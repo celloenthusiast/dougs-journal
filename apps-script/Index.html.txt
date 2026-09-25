@@ -1,0 +1,1000 @@
+<!DOCTYPE html>
+<!-- Doug's Journal v1.8 self-contained -->
+<html>
+<head>
+  <base target="_top">
+  <meta name="theme-color" content="#49657a">
+<style>
+/* Doug's Journal */
+:root{
+  --accent:#49657a;
+  --accent-contrast:#fff;
+  --bg:#f5f6f7;
+  --panel:#fff;
+  --panel-2:#f0f2f4;
+  --text:#1e252b;
+  --muted:#6c7780;
+  --border:#dfe4e8;
+  --danger:#a33b3b;
+  --shadow:0 8px 30px rgba(18,25,31,.08);
+  --radius:16px;
+  --sidebar:250px;
+}
+*{box-sizing:border-box}
+html,body{margin:0;min-height:100%;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;background:var(--bg);color:var(--text)}
+body.dark{
+  --bg:#14181b;
+  --panel:#1d2327;
+  --panel-2:#252c31;
+  --text:#eef2f4;
+  --muted:#a7b0b7;
+  --border:#354047;
+  --shadow:0 8px 30px rgba(0,0,0,.28);
+}
+button,input,select{font:inherit}
+button{cursor:pointer}
+.topbar{
+  position:sticky;top:0;z-index:30;height:68px;background:var(--panel);
+  display:flex;align-items:center;justify-content:space-between;padding:0 18px;border-bottom:1px solid var(--border)
+}
+.brand{display:flex;align-items:center;gap:10px}
+.brandMark{width:38px;height:38px;border-radius:12px;background:var(--accent);color:#fff;display:grid;place-items:center;font-weight:700}
+.brandTitle{font-weight:700}
+.brandSub{font-size:12px;color:var(--muted)}
+.topActions{display:flex;gap:8px;align-items:center}
+.layout{display:grid;grid-template-columns:var(--sidebar) minmax(0,1fr);min-height:calc(100vh - 68px)}
+.sidebar{
+  position:sticky;top:68px;height:calc(100vh - 68px);background:var(--panel);
+  border-right:1px solid var(--border);padding:16px 12px;display:flex;flex-direction:column;overflow:auto
+}
+.navItem{
+  width:100%;border:0;background:transparent;color:var(--text);text-align:left;border-radius:11px;
+  padding:10px 12px;display:flex;gap:10px;align-items:center;margin:2px 0
+}
+.navItem:hover,.navItem.active{background:var(--panel-2)}
+.navItem.active{font-weight:650;color:var(--accent)}
+.sidebarSection{padding:16px 10px 8px}
+.sidebarLabel{text-transform:uppercase;font-size:11px;letter-spacing:.08em;color:var(--muted);margin-bottom:8px}
+.tagList{display:flex;flex-wrap:wrap;gap:6px}
+.tagChip{border:1px solid var(--border);background:var(--panel);color:var(--text);border-radius:999px;padding:5px 8px;font-size:12px}
+.tagChip:hover{border-color:var(--accent)}
+.sidebarBottom{margin-top:auto}
+.main{padding:28px;min-width:0}
+.view{display:none;max-width:1000px;margin:0 auto}
+.view.active{display:block}
+.viewHeader{display:flex;justify-content:space-between;align-items:flex-end;gap:18px;margin-bottom:20px}
+h1{font-size:30px;margin:0 0 4px}
+h2{font-size:20px;margin-top:0}
+.muted{color:var(--muted);font-size:14px}
+.primaryBtn,.secondaryBtn{
+  border-radius:10px;padding:10px 14px;border:1px solid transparent;font-weight:650
+}
+.primaryBtn{background:var(--accent);color:var(--accent-contrast)}
+.secondaryBtn{background:var(--panel);color:var(--text);border-color:var(--border)}
+.compact{padding:7px 10px;font-size:13px}
+.wide{width:100%;margin:14px 0}
+.iconBtn{
+  border:0;background:transparent;color:var(--text);width:38px;height:38px;border-radius:10px;font-size:20px
+}
+.iconBtn:hover{background:var(--panel-2)}
+.searchWrap input{
+  width:min(360px,45vw);padding:11px 14px;border-radius:12px;border:1px solid var(--border);background:var(--panel);color:var(--text)
+}
+.activeFilter{
+  display:inline-flex;background:color-mix(in srgb,var(--accent) 14%,transparent);color:var(--accent);
+  border-radius:999px;padding:7px 10px;margin-bottom:14px;font-size:13px
+}
+.hidden{display:none!important}
+.timelineList{display:flex;flex-direction:column;gap:14px}
+.entryCard{
+  background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);
+  overflow:hidden;display:grid;grid-template-columns:minmax(0,1fr);cursor:pointer
+}
+.entryCard.withPhoto{grid-template-columns:minmax(0,1fr) 180px}
+.entryContent{padding:18px}
+.entryTop{display:flex;justify-content:space-between;gap:12px;margin-bottom:8px}
+.entryDate{font-size:13px;color:var(--accent);font-weight:700}
+.entryTitle{font-size:20px;font-weight:700;margin:2px 0 7px}
+.entryPreview{color:var(--text);opacity:.88;line-height:1.5;white-space:pre-line;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden}
+.entryMeta{display:flex;gap:8px;flex-wrap:wrap;margin-top:11px;align-items:center}
+.pill{font-size:12px;background:var(--panel-2);border-radius:999px;padding:5px 8px;color:var(--muted)}
+.star{color:#d39a20}
+.cardPhoto{width:180px;height:100%;min-height:150px;background:var(--panel-2);object-fit:cover}
+.photoPlaceholder{display:grid;place-items:center;color:var(--muted)}
+.emptyState{
+  border:1px dashed var(--border);border-radius:var(--radius);padding:42px 20px;text-align:center;color:var(--muted);background:var(--panel)
+}
+.calendarControls{display:flex;align-items:center;gap:8px}
+.calendarTitle{min-width:170px;text-align:center;font-weight:700}
+.calendarWeekdays,.calendarGrid{display:grid;grid-template-columns:repeat(7,1fr)}
+.calendarWeekdays div{text-align:center;color:var(--muted);font-size:12px;padding:8px}
+.calendarGrid{border-top:1px solid var(--border);border-left:1px solid var(--border);background:var(--panel)}
+.calDay{
+  min-height:110px;padding:8px;border-right:1px solid var(--border);border-bottom:1px solid var(--border);cursor:pointer;position:relative
+}
+.calDay.outside{opacity:.35}
+.calDay:hover{background:var(--panel-2)}
+.calNumber{font-size:13px;font-weight:650}
+.calEntries{display:flex;flex-direction:column;gap:4px;margin-top:7px}
+.calEntry{font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;background:color-mix(in srgb,var(--accent) 14%,transparent);padding:3px 5px;border-radius:5px}
+.todayMark .calNumber{background:var(--accent);color:#fff;width:25px;height:25px;border-radius:50%;display:grid;place-items:center}
+.galleryGrid{display:grid;grid-template-columns:repeat(4,1fr);gap:9px}
+.galleryItem{aspect-ratio:1;overflow:hidden;border-radius:12px;background:var(--panel-2);cursor:pointer;position:relative}
+.galleryItem img{width:100%;height:100%;object-fit:cover}
+.galleryCaption{position:absolute;left:0;right:0;bottom:0;padding:18px 8px 7px;background:linear-gradient(transparent,rgba(0,0,0,.7));color:white;font-size:11px}
+.mapCanvas{height:560px;border-radius:var(--radius);overflow:hidden;border:1px solid var(--border);background:var(--panel)}
+.settingsCard{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:20px;margin-bottom:16px}
+.settingsCard label{display:flex;flex-direction:column;gap:6px;margin:14px 0;max-width:360px}
+.settingsCard select,.settingsCard input[type=color]{padding:8px;border:1px solid var(--border);background:var(--panel);color:var(--text);border-radius:9px}
+.buttonRow{display:flex;gap:8px;flex-wrap:wrap}
+.loadingOverlay{position:fixed;inset:0;background:var(--bg);z-index:100;display:grid;place-content:center;justify-items:center;gap:12px}
+.spinner{width:34px;height:34px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%) translateY(30px);background:#111;color:#fff;border-radius:10px;padding:10px 14px;z-index:120;opacity:0;pointer-events:none;transition:.2s}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+.entryDialog{border:0;padding:0;width:min(900px,100vw);height:min(94vh,900px);border-radius:18px;background:var(--panel);color:var(--text);box-shadow:0 25px 80px rgba(0,0,0,.3)}
+.entryDialog::backdrop{background:rgba(0,0,0,.45);backdrop-filter:blur(2px)}
+.entryForm{height:100%;display:flex;flex-direction:column}
+.editorTopbar{height:64px;padding:0 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px}
+.editorHeading{font-weight:700;flex:1}
+.editorActions{display:flex;align-items:center;gap:8px}
+.dangerTextBtn{border:0;background:transparent;color:var(--danger);padding:10px}
+.editorScroll{padding:22px;overflow:auto}
+.dateTimeRow{display:grid;grid-template-columns:1fr 1fr auto;gap:12px;align-items:end}
+.dateTimeRow label,.metaGrid label{display:flex;flex-direction:column;gap:6px;color:var(--muted);font-size:12px}
+.dateTimeRow input,.metaGrid input,.metaGrid select{
+  padding:10px;border-radius:9px;border:1px solid var(--border);background:var(--panel);color:var(--text)
+}
+.favoriteLabel{flex-direction:row!important;align-items:center;padding-bottom:10px;font-size:14px!important;color:var(--text)!important}
+.titleInput{width:100%;font-size:28px;font-weight:700;border:0;outline:0;background:transparent;color:var(--text);padding:20px 0 10px}
+.formatBar{display:flex;gap:4px;flex-wrap:wrap;border-top:1px solid var(--border);border-bottom:1px solid var(--border);padding:7px 0}
+.formatBar button{border:0;background:transparent;color:var(--text);padding:7px 9px;border-radius:7px}
+.formatBar button:hover{background:var(--panel-2)}
+.bodyEditor{min-height:260px;outline:0;line-height:1.65;padding:18px 2px;font-size:17px}
+.bodyEditor:empty:before{content:attr(data-placeholder);color:var(--muted)}
+.bodyEditor a{color:var(--accent)}
+.metaGrid{display:grid;grid-template-columns:2fr 1fr;gap:12px;border-top:1px solid var(--border);padding-top:18px}
+.locationField{grid-column:1/-1}
+.inlineInput{display:flex;gap:7px}
+.inlineInput input{flex:1}
+.attachmentsSection{margin-top:20px}
+.sectionHeading{display:flex;justify-content:space-between;align-items:center}
+.sectionHeading h3{margin:0}
+.fileButton input{display:none}
+.attachmentGrid,.pendingFiles{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:10px}
+.attachmentTile{position:relative;aspect-ratio:1;background:var(--panel-2);border-radius:10px;overflow:hidden;display:grid;place-items:center}
+.attachmentTile img{width:100%;height:100%;object-fit:cover}
+.attachmentTile .fileName{font-size:11px;padding:8px;text-align:center;word-break:break-word}
+.attachmentDelete{position:absolute;right:5px;top:5px;width:27px;height:27px;border:0;border-radius:50%;background:rgba(0,0,0,.65);color:white}
+.pendingBadge{position:absolute;bottom:5px;left:5px;background:rgba(0,0,0,.65);color:#fff;border-radius:5px;padding:3px 5px;font-size:10px}
+.mobileOnly{display:none}
+
+@media(max-width:760px){
+  .mobileOnly{display:inline-grid;place-items:center}
+  .brandSub{display:none}
+  .layout{display:block}
+  .sidebar{position:fixed;left:0;top:68px;bottom:0;width:min(82vw,290px);height:auto;z-index:50;transform:translateX(-105%);transition:.2s;box-shadow:var(--shadow)}
+  .sidebar.open{transform:translateX(0)}
+  .main{padding:18px 12px}
+  .viewHeader{align-items:flex-start;flex-direction:column}
+  .searchWrap,.searchWrap input{width:100%;max-width:none}
+  .entryCard.withPhoto{grid-template-columns:minmax(0,1fr) 112px}
+  .cardPhoto{width:112px;min-height:150px}
+  .entryContent{padding:15px}
+  .calendarWeekdays div{font-size:10px}
+  .calDay{min-height:75px;padding:5px}
+  .calEntry{font-size:9px}
+  .galleryGrid{grid-template-columns:repeat(3,1fr)}
+  .entryDialog{width:100vw;height:100vh;max-height:none;border-radius:0}
+  .editorScroll{padding:16px}
+  .dateTimeRow{grid-template-columns:1fr 1fr}
+  .favoriteLabel{grid-column:1/-1}
+  .metaGrid{grid-template-columns:1fr}
+  .locationField{grid-column:auto}
+  .attachmentGrid,.pendingFiles{grid-template-columns:repeat(3,1fr)}
+  .topbar{padding:0 10px}
+  .brandTitle{font-size:14px}
+  .primaryBtn{padding:9px 11px}
+}
+.authScreen{
+  min-height:100vh;display:grid;place-items:center;padding:24px;background:var(--bg);color:var(--text)
+}
+.authCard{
+  width:min(420px,100%);background:var(--panel);border:1px solid var(--border);border-radius:22px;box-shadow:var(--shadow);padding:32px;text-align:center
+}
+.authMark{margin:0 auto 14px;width:52px;height:52px;font-size:20px}
+.authCard h1{font-size:28px;margin-bottom:6px}
+#loginForm{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;margin-top:22px}
+.pinInput{
+  min-width:0;padding:12px 14px;border:1px solid var(--border);border-radius:11px;background:var(--panel);color:var(--text);font-size:18px;letter-spacing:.16em;text-align:center
+}
+.loginMessage{min-height:22px;margin-top:10px}
+.authHint{margin-top:16px;font-size:12px;color:var(--muted);line-height:1.45}
+.exportNote{margin:12px 0 0;line-height:1.45}
+
+@media(max-width:520px){
+  #loginForm{grid-template-columns:1fr}
+  .authCard{padding:26px 20px}
+}
+
+</style>
+
+</head>
+<body>
+  <div id="authScreen" class="authScreen hidden">
+    <div class="authCard">
+      <div class="brandMark authMark">W</div>
+      <h1>Doug's Journal</h1>
+      <p id="loginSubtitle" class="muted">Enter your PIN to open the journal.</p>
+      <form id="loginForm">
+        <input id="pinInput" class="pinInput" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="12" autocomplete="current-password" placeholder="PIN" required>
+        <button id="loginBtn" class="primaryBtn" type="submit">Unlock</button>
+      </form>
+      <div id="loginMessage" class="loginMessage muted"></div>
+      <div class="authHint">This browser stays signed in as long as the journal is used at least once every seven days.</div>
+    </div>
+  </div>
+
+  <div id="startupFailure" class="authScreen hidden">
+    <div class="authCard">
+      <div class="brandMark authMark">W</div>
+      <h1>Journal couldn't open</h1>
+      <p id="startupFailureText" class="muted">The journal did not finish starting.</p>
+      <button class="primaryBtn" type="button" onclick="location.reload()">Try Again</button>
+      <div class="authHint">If this keeps happening, make sure you are using the deployed /exec URL and try temporarily disabling content blocking for the page.</div>
+    </div>
+  </div>
+
+  <div id="appShell" class="hidden">
+    <header class="topbar">
+      <button class="iconBtn mobileOnly" id="navToggle" aria-label="Menu">☰</button>
+      <div class="brand">
+        <div class="brandMark">W</div>
+        <div>
+          <div class="brandTitle">Doug's Journal</div>
+          <div class="brandSub">Private journal</div>
+        </div>
+      </div>
+      <div class="topActions">
+        <button class="iconBtn" id="themeToggle" title="Toggle theme">◐</button>
+        <button class="primaryBtn" id="newEntryBtn">＋ New entry</button>
+      </div>
+    </header>
+
+    <div class="layout">
+      <aside class="sidebar" id="sidebar">
+        <nav>
+          <button class="navItem active" data-view="timeline">▤ <span>Timeline</span></button>
+          <button class="navItem" data-view="calendar">▦ <span>Calendar</span></button>
+          <button class="navItem" data-view="onthisday">↺ <span>On this day</span></button>
+          <button class="navItem" data-view="gallery">▧ <span>Photos</span></button>
+          <button class="navItem" data-view="map">⌖ <span>Map</span></button>
+          <button class="navItem" data-view="favorites">★ <span>Favorites</span></button>
+        </nav>
+
+        <div class="sidebarSection">
+          <div class="sidebarLabel">Tags</div>
+          <div id="tagList" class="tagList"></div>
+        </div>
+
+        <div class="sidebarBottom">
+          <button class="navItem" data-view="settings">⚙ <span>Settings & backup</span></button>
+          <button class="navItem" id="logoutBtn">↪ <span>Log out</span></button>
+        </div>
+      </aside>
+
+      <main class="main">
+        <section id="timelineView" class="view active">
+          <div class="viewHeader">
+            <div>
+              <h1>Timeline</h1>
+              <div class="muted" id="entryCount"></div>
+            </div>
+            <div class="searchWrap">
+              <input id="searchInput" type="search" placeholder="Search journal…" autocomplete="off">
+            </div>
+          </div>
+          <div id="activeFilter" class="activeFilter hidden"></div>
+          <div id="timelineList" class="timelineList"></div>
+          <button id="loadMoreBtn" class="secondaryBtn wide hidden">Load more</button>
+        </section>
+
+        <section id="calendarView" class="view">
+          <div class="viewHeader">
+            <div>
+              <h1>Calendar</h1>
+              <div class="muted">Days with journal entries are marked.</div>
+            </div>
+            <div class="calendarControls">
+              <button id="prevMonth" class="iconBtn">‹</button>
+              <div id="calendarTitle" class="calendarTitle"></div>
+              <button id="nextMonth" class="iconBtn">›</button>
+            </div>
+          </div>
+          <div class="calendarWeekdays">
+            <div>Sun</div><div>Mon</div><div>Tue</div><div>Wed</div><div>Thu</div><div>Fri</div><div>Sat</div>
+          </div>
+          <div id="calendarGrid" class="calendarGrid"></div>
+        </section>
+
+        <section id="onthisdayView" class="view">
+          <div class="viewHeader">
+            <div>
+              <h1>On this day</h1>
+              <div class="muted">Entries from this date in previous years.</div>
+            </div>
+          </div>
+          <div id="onThisDayList" class="timelineList"></div>
+        </section>
+
+        <section id="galleryView" class="view">
+          <div class="viewHeader">
+            <div><h1>Photos</h1><div class="muted">Photos across your journal.</div></div>
+          </div>
+          <div id="galleryGrid" class="galleryGrid"></div>
+        </section>
+
+        <section id="mapView" class="view">
+          <div class="viewHeader">
+            <div><h1>Map</h1><div class="muted">Entries where you saved coordinates.</div></div>
+          </div>
+          <div id="mapCanvas" class="mapCanvas">
+            <div class="emptyState">Map loads when this view is opened.</div>
+          </div>
+        </section>
+
+        <section id="favoritesView" class="view">
+          <div class="viewHeader">
+            <div><h1>Favorites</h1><div class="muted">Entries you starred.</div></div>
+          </div>
+          <div id="favoritesList" class="timelineList"></div>
+        </section>
+
+        <section id="settingsView" class="view">
+          <div class="viewHeader">
+            <div><h1>Settings & backup</h1><div class="muted">Appearance and portable exports.</div></div>
+          </div>
+
+          <div class="settingsCard">
+            <h2>Appearance</h2>
+            <label>Theme
+              <select id="themeSelect">
+                <option value="system">System</option>
+                <option value="light">Light</option>
+                <option value="dark">Dark</option>
+              </select>
+            </label>
+            <label>Accent color
+              <input id="accentInput" type="color" value="#49657a">
+            </label>
+            <button id="saveSettingsBtn" class="primaryBtn">Save settings</button>
+          </div>
+
+          <div class="settingsCard">
+            <h2>Backup & portability</h2>
+            <p>Your entries live in ordinary Google Sheets rows and attachments live in your Google Drive. You can also create portable exports.</p>
+            <div class="buttonRow">
+              <button id="markdownZipBtn" class="primaryBtn">Create Markdown ZIP</button>
+              <button id="downloadJsonBtn" class="secondaryBtn">Download JSON</button>
+              <button id="backupZipBtn" class="secondaryBtn">Create full ZIP backup</button>
+            </div>
+            <div id="backupStatus" class="muted"></div>
+            <p class="muted exportNote">The Markdown ZIP contains ordinary .md files plus your attachments, so the journal remains readable without this app.</p>
+          </div>
+        </section>
+      </main>
+    </div>
+  </div>
+
+  <div id="loading" class="loadingOverlay">
+    <div class="spinner"></div>
+    <div id="loadingText">Checking journal access…</div>
+  </div>
+
+  <div id="toast" class="toast"></div>
+
+  <dialog id="entryDialog" class="entryDialog">
+    <form method="dialog" class="entryForm" id="entryForm">
+      <div class="editorTopbar">
+        <button type="button" class="iconBtn" id="closeEditor" aria-label="Close">×</button>
+        <div class="editorHeading" id="editorHeading">New entry</div>
+        <div class="editorActions">
+          <button type="button" class="dangerTextBtn hidden" id="deleteEntryBtn">Delete</button>
+          <button type="button" class="primaryBtn" id="saveEntryBtn">Save</button>
+        </div>
+      </div>
+
+      <div class="editorScroll">
+        <input type="hidden" id="entryId">
+
+        <div class="dateTimeRow">
+          <label>Date<input id="entryDate" type="date" required></label>
+          <label>Time<input id="entryTime" type="time" required></label>
+          <label class="favoriteLabel"><input id="entryFavorite" type="checkbox"> ★ Favorite</label>
+        </div>
+
+        <input id="entryTitle" class="titleInput" type="text" placeholder="Title (optional)" maxlength="300">
+
+        <div class="formatBar" aria-label="Formatting">
+          <button type="button" data-cmd="bold"><b>B</b></button>
+          <button type="button" data-cmd="italic"><i>I</i></button>
+          <button type="button" data-cmd="underline"><u>U</u></button>
+          <button type="button" data-cmd="strikeThrough"><s>S</s></button>
+          <button type="button" data-cmd="insertUnorderedList">• List</button>
+          <button type="button" data-cmd="insertOrderedList">1. List</button>
+          <button type="button" id="linkBtn">Link</button>
+        </div>
+
+        <div id="bodyEditor" class="bodyEditor" contenteditable="true" data-placeholder="Write about your day…"></div>
+
+        <div class="metaGrid">
+          <label>Tags
+            <input id="entryTags" type="text" placeholder="family, trip, church">
+          </label>
+          <label>Mood
+            <select id="entryMood">
+              <option value="">—</option>
+              <option>Great</option>
+              <option>Good</option>
+              <option>Okay</option>
+              <option>Tired</option>
+              <option>Stressed</option>
+              <option>Difficult</option>
+            </select>
+          </label>
+          <label class="locationField">Location
+            <div class="inlineInput">
+              <input id="entryLocation" type="text" placeholder="Place name (optional)">
+              <button type="button" class="secondaryBtn compact" id="useLocationBtn">Use current</button>
+            </div>
+          </label>
+        </div>
+
+        <input type="hidden" id="entryLat">
+        <input type="hidden" id="entryLng">
+
+        <div class="attachmentsSection">
+          <div class="sectionHeading">
+            <h3>Attachments</h3>
+            <label class="secondaryBtn compact fileButton">
+              Add photos/files
+              <input id="attachmentInput" type="file" multiple accept="image/*,video/*,audio/*,.pdf,.txt,.doc,.docx">
+            </label>
+          </div>
+          <div id="attachmentGrid" class="attachmentGrid"></div>
+          <div id="pendingFiles" class="pendingFiles"></div>
+        </div>
+      </div>
+    </form>
+  </dialog>
+
+  <script>
+  window.__wjReady = false;
+  window.__wjScriptLoaded = false;
+  window.__wjLastError = '';
+
+  window.addEventListener('error', function (event) {
+    window.__wjLastError = event && event.message ? event.message : 'Unknown JavaScript error';
+  });
+
+  setTimeout(function () {
+    if (window.__wjReady) return;
+
+    var loading = document.getElementById('loading');
+    var loadingText = document.getElementById('loadingText');
+    var detail = '';
+
+    if (!window.__wjScriptLoaded) {
+      detail = 'The main journal script did not start.';
+    } else if (window.__wjLastError) {
+      detail = 'JavaScript error: ' + window.__wjLastError;
+    } else {
+      detail = 'The journal script started but did not finish initialization.';
+    }
+
+    if (loading) loading.classList.remove('hidden');
+
+    if (loadingText) {
+      loadingText.innerHTML =
+        '<div style="max-width:360px;text-align:center;line-height:1.5">' +
+        '<strong>Journal startup did not finish.</strong><br><br>' +
+        detail + '<br><br>' +
+        '<button onclick="location.reload()" style="padding:10px 16px;border:0;border-radius:8px;cursor:pointer">Try Again</button>' +
+        '</div>';
+    }
+  }, 15000);
+</script>
+
+<script>
+// Doug's Journal client v1.8
+window.__wjScriptLoaded = true;
+(() => {
+  'use strict';
+
+  const state = {
+    settings: { theme:'system', accent:'#49657a', photoMaxPx:1600, photoQuality:.82 },
+    tags: [],
+    timelineOffset: 0,
+    timelineTotal: 0,
+    timelineQuery: '',
+    activeTag: '',
+    pendingFiles: [],
+    existingAttachments: [],
+    currentView: 'timeline',
+    calendarDate: new Date(),
+    photoCache: new Map(),
+    observer: null,
+    map: null,
+    mapLoaded: false,
+    authToken: ''
+  };
+
+  const AUTH_STORAGE_KEY = 'wisemanJournalSessionV1';
+
+  const $ = sel => document.querySelector(sel);
+  const $$ = sel => [...document.querySelectorAll(sel)];
+
+  function callServer(fn, authToken, args, timeoutMs = 15000) {
+    return new Promise((resolve, reject) => {
+      let finished = false;
+
+      const timer = setTimeout(() => {
+        if (finished) return;
+        finished = true;
+        reject(new Error('SERVER_TIMEOUT'));
+      }, timeoutMs);
+
+      google.script.run
+        .withSuccessHandler(result => {
+          if (finished) return;
+          finished = true;
+          clearTimeout(timer);
+          resolve(result);
+        })
+        .withFailureHandler(err => {
+          if (finished) return;
+          finished = true;
+          clearTimeout(timer);
+          reject(new Error(err?.message || String(err)));
+        })
+        .api(fn, authToken || '', args || []);
+    });
+  }
+
+  function publicGas(fn, ...args) {
+    return callServer(fn, '', args);
+  }
+
+  function gas(fn, ...args) {
+    return callServer(fn, state.authToken, args)
+      .catch(err => {
+        const message = err?.message || String(err);
+        if (message.includes('AUTH_REQUIRED')) {
+          handleAuthExpired();
+        }
+        throw err;
+      });
+  }
+
+  // This script is at the end of <body>, after all journal elements exist.
+  // Start immediately instead of waiting for DOMContentLoaded; Apps Script's
+  // HTML sandbox can report an unexpected readyState during iframe startup.
+  setTimeout(init, 0);
+
+  async function init() {
+    window.__wjReady = true;
+
+    try {
+      bindEvents();
+      setupPhotoObserver();
+      applyAppearance();
+
+      // Show the login surface immediately. This means a missing/expired token,
+      // a first-time PIN setup, or a slow backend can never leave a blank spinner.
+      showLogin();
+
+      let savedToken = '';
+      try {
+        savedToken = localStorage.getItem(AUTH_STORAGE_KEY) || '';
+      } catch (_) {}
+
+      if (savedToken) {
+        try {
+          const check = await publicGas('checkSession', savedToken);
+          if (check && check.valid) {
+            state.authToken = savedToken;
+            await loadJournal();
+            notifyParentReady();
+            return;
+          }
+        } catch (err) {
+          console.warn('Session check failed', err);
+          const message = String((err && err.message) || err);
+
+          if (message.includes('SERVER_TIMEOUT')) {
+            $('#loginMessage').textContent =
+              'Google Apps Script did not answer the session check. You can still try your PIN below.';
+          }
+        }
+      }
+
+      try { localStorage.removeItem(AUTH_STORAGE_KEY); } catch (_) {}
+
+      // This is informational only; the login screen is already usable.
+      try {
+        const authStatus = await publicGas('getAuthStatus');
+        if (authStatus && authStatus.pinConfigured === false) {
+          const subtitle = $('#loginSubtitle');
+          if (subtitle) {
+            subtitle.textContent =
+              'No journal PIN is configured yet. Set one from the Journal menu in the Google Sheet, then return here.';
+          }
+          $('#loginMessage').textContent =
+            'PIN setup is required before the journal can be unlocked.';
+        }
+      } catch (err) {
+        console.warn('Could not read PIN setup status', err);
+      }
+
+      notifyParentReady();
+
+    } catch (err) {
+      console.error('Journal initialization failed', err);
+      showStartupFailure(
+        'Journal initialization error: ' + String((err && err.message) || err)
+      );
+      notifyParentReady();
+    }
+  }
+
+  function notifyParentReady() {
+    try {
+      if (window.parent && window.parent !== window) {
+        window.parent.postMessage({ type: 'dougs-journal-ready' }, '*');
+      }
+    } catch (_) {}
+  }
+
+  async function loadJournal() {
+    $('#authScreen').classList.add('hidden');
+    $('#appShell').classList.add('hidden');
+    $('#loadingText').textContent = 'Opening journal…';
+    $('#loading').classList.remove('hidden');
+
+    try {
+      const data = await gas('getBootstrap');
+      state.settings = data.settings || state.settings;
+      state.tags = data.tags || [];
+      state.timelineTotal = data.totalEntries || 0;
+      applyAppearance();
+      renderTags();
+      renderTimeline(data.recentEntries || [], false);
+      updateEntryCount((data.recentEntries || []).length, state.timelineTotal);
+      state.timelineOffset = (data.recentEntries || []).length;
+      $('#loadMoreBtn').classList.toggle('hidden', state.timelineOffset >= state.timelineTotal);
+      $('#appShell').classList.remove('hidden');
+      window.__wjReady = true;
+      notifyParentReady();
+    } catch (err) {
+      const message = String(err?.message || err);
+
+      if (message.includes('SERVER_TIMEOUT')) {
+        showStartupFailure(
+          'The page loaded, but Google Apps Script did not answer the journal-data request.'
+        );
+        return;
+      }
+
+      if (!message.includes('AUTH_REQUIRED')) showError(err);
+    } finally {
+      if (!$('#startupFailure') || $('#startupFailure').classList.contains('hidden')) {
+        $('#loading').classList.add('hidden');
+      }
+    }
+  }
+
+  function showLogin(message = '') {
+    window.__wjReady = true;
+    $('#loading').classList.add('hidden');
+    notifyParentReady();
+    $('#startupFailure')?.classList.add('hidden');
+    $('#appShell').classList.add('hidden');
+    $('#authScreen').classList.remove('hidden');
+    $('#loginMessage').textContent = message;
+    $('#pinInput').value = '';
+    setTimeout(() => $('#pinInput').focus(), 30);
+  }
+
+  function showStartupFailure(message) {
+    window.__wjReady = true;
+    $('#loading').classList.add('hidden');
+    $('#appShell').classList.add('hidden');
+    $('#authScreen').classList.add('hidden');
+
+    const box = $('#startupFailure');
+    box.classList.remove('hidden');
+    $('#startupFailureText').textContent = message || 'The journal could not start.';
+  }
+
+  async function loginWithPin(event) {
+    event.preventDefault();
+
+    const pin = $('#pinInput').value.trim();
+    const btn = $('#loginBtn');
+    const message = $('#loginMessage');
+
+    if (!/^\d{4,12}$/.test(pin)) {
+      message.textContent = 'Enter your 4-12 digit PIN.';
+      return;
+    }
+
+    btn.disabled = true;
+    btn.textContent = 'Unlocking…';
+    message.textContent = '';
+
+    try {
+      const result = await publicGas('authenticatePin', pin);
+      state.authToken = result.token;
+      try {
+        localStorage.setItem(AUTH_STORAGE_KEY, result.token);
+      } catch (_) {
+        // The app still works for this tab if browser storage is unavailable.
+      }
+      await loadJournal();
+    } catch (err) {
+      const text = String(err?.message || err);
+      if (text.includes('PIN_NOT_CONFIGURED')) {
+        message.textContent = 'The journal PIN has not been configured yet. Set pinSetup in the Settings sheet and run setJournalPin().';
+      } else if (text.includes('INVALID_PIN')) {
+        message.textContent = 'Incorrect PIN.';
+      } else if (text.includes('SERVER_TIMEOUT')) {
+        message.textContent = 'Google Apps Script did not respond. Tap Unlock to try again.';
+      } else {
+        message.textContent = 'Unable to unlock the journal.';
+      }
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Unlock';
+      $('#pinInput').select();
+    }
+  }
+
+  async function logout() {
+    const token = state.authToken;
+    state.authToken = '';
+    try { localStorage.removeItem(AUTH_STORAGE_KEY); } catch (_) {}
+
+    try {
+      if (token) await publicGas('logoutSession', token);
+    } catch (_) {}
+
+    if ($('#entryDialog').open) $('#entryDialog').close();
+    showLogin('Logged out.');
+  }
+
+  function handleAuthExpired() {
+    state.authToken = '';
+    try { localStorage.removeItem(AUTH_STORAGE_KEY); } catch (_) {}
+    if ($('#entryDialog').open) $('#entryDialog').close();
+    showLogin('Your journal login expired. Enter your PIN again.');
+  }
+
+  function bindEvents() {
+    $('#loginForm').addEventListener('submit', loginWithPin);
+    $('#logoutBtn').addEventListener('click', logout);
+    $('#newEntryBtn').addEventListener('click', () => openEditor());
+    $('#closeEditor').addEventListener('click', closeEditor);
+    $('#saveEntryBtn').addEventListener('click', saveEditor);
+    $('#deleteEntryBtn').addEventListener('click', deleteCurrentEntry);
+    $('#navToggle').addEventListener('click', () => $('#sidebar').classList.toggle('open'));
+
+    $$('.navItem[data-view]').forEach(btn => btn.addEventListener('click', () => switchView(btn.dataset.view)));
+
+    $('#searchInput').addEventListener('input', debounce(async e => {
+      state.timelineQuery = e.target.value;
+      state.activeTag = '';
+      await refreshTimeline();
+    }, 350));
+
+    $('#loadMoreBtn').addEventListener('click', loadMoreTimeline);
+    $('#prevMonth').addEventListener('click', () => changeMonth(-1));
+    $('#nextMonth').addEventListener('click', () => changeMonth(1));
+
+    $('#themeToggle').addEventListener('click', () => {
+      const current = effectiveTheme();
+      state.settings.theme = current === 'dark' ? 'light' : 'dark';
+      applyAppearance();
+    });
+
+    $('#saveSettingsBtn').addEventListener('click', saveSettings);
+    $('#downloadJsonBtn').addEventListener('click', downloadJson);
+    $('#backupZipBtn').addEventListener('click', createBackup);
+    $('#markdownZipBtn').addEventListener('click', createMarkdownBackup);
+
+    $$('.formatBar [data-cmd]').forEach(btn => btn.addEventListener('click', () => {
+      document.execCommand(btn.dataset.cmd, false, null);
+      $('#bodyEditor').focus();
+    }));
+
+    $('#linkBtn').addEventListener('click', () => {
+      const url = prompt('Link URL:');
+      if (url) document.execCommand('createLink', false, url);
+      $('#bodyEditor').focus();
+    });
+
+    $('#attachmentInput').addEventListener('change', queueFiles);
+    $('#useLocationBtn').addEventListener('click', useCurrentLocation);
+    $('#entryDialog').addEventListener('cancel', e => { e.preventDefault(); closeEditor(); });
+
+    window.matchMedia?.('(prefers-color-scheme: dark)').addEventListener?.('change', () => {
+      if (state.settings.theme === 'system') applyAppearance();
+    });
+  }
+
+  async function switchView(view) {
+    state.currentView = view;
+    $$('.view').forEach(v => v.classList.remove('active'));
+    $(`#${view}View`)?.classList.add('active');
+    $$('.navItem[data-view]').forEach(b => b.classList.toggle('active', b.dataset.view === view));
+    $('#sidebar').classList.remove('open');
+
+    try {
+      if (view === 'calendar') await renderCalendar();
+      if (view === 'onthisday') await renderOnThisDay();
+      if (view === 'gallery') await renderGallery();
+      if (view === 'map') await renderMap();
+      if (view === 'favorites') await renderFavorites();
+      if (view === 'settings') populateSettings();
+    } catch (err) {
+      showError(err);
+    }
+  }
+
+  function renderTags() {
+    const root = $('#tagList');
+    root.innerHTML = '';
+    state.tags.slice(0, 30).forEach(tag => {
+      const b = document.createElement('button');
+      b.className = 'tagChip';
+      b.textContent = `${tag.name} ${tag.count}`;
+      b.addEventListener('click', async () => {
+        state.activeTag = tag.name;
+        state.timelineQuery = '';
+        $('#searchInput').value = '';
+        await switchView('timeline');
+        await refreshTimeline();
+      });
+      root.appendChild(b);
+    });
+  }
+
+  async function refreshTimeline() {
+    state.timelineOffset = 0;
+    const res = await gas('listEntries', {
+      query: state.timelineQuery,
+      tag: state.activeTag,
+      limit: 60,
+      offset: 0
+    });
+    state.timelineTotal = res.total;
+    renderTimeline(res.items, false);
+    state.timelineOffset = res.items.length;
+    updateEntryCount(res.items.length, res.total);
+    $('#loadMoreBtn').classList.toggle('hidden', state.timelineOffset >= res.total);
+
+    const filter = $('#activeFilter');
+    if (state.activeTag) {
+      filter.textContent = `Tag: ${state.activeTag}  ×`;
+      filter.classList.remove('hidden');
+      filter.onclick = async () => { state.activeTag=''; await refreshTimeline(); };
+    } else {
+      filter.classList.add('hidden');
+    }
+  }
+
+  async function loadMoreTimeline() {
+    const btn = $('#loadMoreBtn');
+    btn.disabled = true;
+    try {
+      const res = await gas('listEntries', {
+        query: state.timelineQuery,
+        tag: state.activeTag,
+        limit: 60,
+        offset: state.timelineOffset
+      });
+      renderTimeline(res.items, true);
+      state.timelineOffset += res.items.length;
+      updateEntryCount(state.timelineOffset, res.total);
+      btn.classList.toggle('hidden', state.timelineOffset >= res.total);
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  function updateEntryCount(showing, total) {
+    $('#entryCount').textContent = total ? `${total} ${total === 1 ? 'entry' : 'entries'}` : 'No entries yet';
+  }
+
+  function renderTimeline(items, append) {
+    const root = $('#timelineList');
+    if (!append) root.innerHTML = '';
+    if (!append && !items.length) {
+      root.innerHTML = `<div class="emptyState">No journal entries found.<br><br><button class="primaryBtn" onclick="document.querySelector('#newEntryBtn').click()">Write your first entry</button></div>`;
+      return;
+    }
+    items.forEach(e => root.appendChild(entryCard(e)));
+    observePhotos();
+  }
+
+  function entryCard(e) {
+    const el = document.createElement('article');
+    el.className = 'entryCard' + (e.firstPhotoId ? ' withPhoto' : '');
+    el.dataset.entryId = e.id;
+    el.addEventListener('click', () => openEditor(e.id));
+
+    const tags = parseTags(e.tags);
+    const dateLabel = prettyDate(e.date);
+    const preview = escapeHtml((e.bodyText || '').trim()).replace(/\n/g, '<br>');
+    el.innerHTML = `
+      <div class="entryContent">
+        <div class="entryTop">
+          <div class="entryDate">${escapeHtml(dateLabel)}${e.time ? ' · ' + escapeHtml(prettyTime(e.time)) : ''}</div>
+          ${e.favorite ? '<div class="star">★</div>' : ''}
+        </div>
+        ${e.title ? `<div class="entryTitle">${escapeHtml(e.title)}</div>` : ''}
+        <div class="entryPreview">${preview || '<span class="muted">No text</span>'}</div>
+        <div class="entryMeta">
+          ${e.mood ? `<span class="pill">${escapeHtml(e.mood)}</span>` : ''}
+          ${e.locationName ? `<span class="pill">⌖ ${escapeHtml(e.locationName)}</span>` : ''}
+          ${tags.slice(0,5).map(t => `<span class="pill">#${escapeHtml(t)}</span>`).join('')}
+        </div>
+      </div>
+      ${e.firstPhotoId ? `<div class="cardPhoto photoPlaceholder lazyPhoto" data-photo-id="${e.firstPhotoId}">Photo</div>` : ''}
+    `;
+    return el;
+  }
+
+  function setupPhotoObserver() {
+    if (!('IntersectionObserver' in window)) return;
+    state.observer = new IntersectionObserver(entries => {
+      entries.forEach(x => {
+        if (x.isIntersecting) {
+          state.observer.unobserve(x.target);
+          loadPhotoInto(x.target, x.target.dataset.photoId);
+        }
+      });
+    }, { rootMargin:'250px' });
+  }
+
+  function observePhotos() {
+    $$('.lazyPhoto').forEach(el => {
+      if (el.dataset.observed) return;
+      el.dataset.observed = '1';
+      if (state.observer) state.observer.observe(el);
+      else loadPhotoInto(el, el.dataset.photoId);
+    });
+  }
+
+  async function loadPhotoInto(el, id) {
+    if (!id || !el?.isConnected) return;
+    try {
+      const data = await getPhotoData(id);
+      const img = document.createElement('img');
+      img.className = el.classList.contains('cardPhoto') ? 'cardPhoto' : '';
+      img.alt = '';
+      img.loading = 'lazy';
+      img.src = data.dataUrl;
+      el.replaceWith(img);
+    } catch (_) {
+      el.textContent = 'Photo unavailable';
+    }
+  }
+
+  async function getPhotoData(id) {
+    if (state.photoCache.has(id)) return state.photoCache.get(id);
+    const data = await gas('getAttachmentData', id, true);
+    state.photoCache.set(id, data);
+    return data;
+  }
+
+  async function openEditor(entryId='') {
