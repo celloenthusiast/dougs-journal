@@ -2,42 +2,41 @@
 
 Live site: https://celloenthusiast.github.io/dougs-journal/
 
-This repository is the GitHub Pages front door for Doug's private journal.
+GitHub Pages provides the stable public front door. Google Apps Script runs the
+private journal and stores journal data in Google Sheets / Drive.
 
-## Architecture
+## Current Apps Script build: v1.4 self-contained
 
-- GitHub Pages provides the stable cross-platform URL.
-- Google Apps Script runs the journal and stores data in Google Sheets / Drive.
-- The GitHub wrapper uses the account-neutral Apps Script /exec URL.
-- The journal's own PIN/session system protects access.
-- No PIN or journal content belongs in this public repository.
+The Apps Script web app now needs only two runtime source files:
 
-## One required Apps Script change
+- Code.gs
+- Index.html
 
-In Code.gs, the doGet() function must be:
+Index.html contains its CSS and JavaScript inline. This intentionally removes
+HtmlService template includes from the request path so doGet() cannot fail while
+trying to evaluate Styles.html or Script.html.
+
+The Apps Script doGet() should be:
 
 ```javascript
 function doGet() {
-  return HtmlService.createTemplateFromFile('Index')
-    .evaluate()
+  return HtmlService.createHtmlOutputFromFile('Index')
     .setTitle('Wiseman Journal')
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL)
-    .addMetaTag('viewport', 'width=device-width, initial-scale=1, viewport-fit=cover');
+    .addMetaTag(
+      'viewport',
+      'width=device-width, initial-scale=1, viewport-fit=cover'
+    );
 }
 ```
 
-Then deploy a NEW Apps Script web-app version:
+After replacing Code.gs and Index.html, deploy a NEW web-app version:
 
 - Execute as: Me
 - Who has access: Anyone
 
-Keep using the same /exec deployment URL. The GitHub wrapper is already pointed at it.
+The GitHub wrapper already uses the account-neutral /exec URL:
 
+https://script.google.com/macros/s/AKfycbwp8L0guuDD7uK3pS00qiIJy9GUJusKNJumhqFlWqpGnqDBNkYO1fjiPooRYfiUNAUFdw/exec
 
-## 2026-09-25 startup fix
-
-If the live site shows "Journal startup did not finish" before a PIN screen appears,
-the Apps Script Index/Script files are out of sync. Replace the Apps Script
-Script.html with the matched v1.3 Script.html, save, and deploy a new web-app
-version. The GitHub wrapper itself is already functioning when this message is
-visible.
+No PIN or journal content belongs in this public repository.
