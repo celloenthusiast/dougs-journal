@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Doug's Journal</title>
+  <meta name="theme-color" content="#49657a">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Doug's Journal">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icon.svg">
+  <style>
+    :root {
+      --accent:#49657a;
+      --bg:#f5f6f7;
+      --panel:#ffffff;
+      --text:#1e252b;
+      --muted:#6c7780;
+      --border:#dfe4e8;
+    }
+    * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+    html, body {
+      margin:0; width:100%; height:100%; min-height:100vh; min-height:100svh;
+      overflow:hidden; background:var(--bg);
+      font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+      color:var(--text);
+    }
+    #appFrame {
+      position:fixed; inset:0; width:100%; height:100%; height:100svh;
+      border:0; margin:0; padding:0; background:var(--bg); z-index:1;
+    }
+    #loading {
+      position:fixed; inset:0; z-index:20; display:grid; place-items:center;
+      background:var(--bg); transition:opacity .2s ease;
+    }
+    #loading.hidden { opacity:0; pointer-events:none; }
+    .loadingInner { text-align:center; padding:28px; max-width:380px; }
+    .mark {
+      width:84px; height:84px; margin:0 auto; display:grid; place-items:center;
+      border-radius:22px; background:var(--accent); color:#fff;
+      font-size:40px; font-weight:750; box-shadow:0 8px 28px rgba(30,50,65,.16);
+    }
+    .title { margin-top:16px; font-size:23px; font-weight:750; }
+    .message { margin-top:6px; color:var(--muted); font-size:14px; line-height:1.5; }
+    .spinner {
+      width:28px; height:28px; margin:18px auto 0;
+      border:3px solid var(--border); border-top-color:var(--accent);
+      border-radius:50%; animation:spin .8s linear infinite;
+    }
+    @keyframes spin { to { transform:rotate(360deg); } }
+    #help {
+      position:fixed; inset:0; z-index:30; display:none; place-items:center;
+      padding:24px; background:var(--bg);
+    }
+    #help.show { display:grid; }
+    .helpCard {
+      width:min(430px,100%); background:var(--panel); border:1px solid var(--border);
+      border-radius:18px; padding:22px; box-shadow:0 10px 35px rgba(0,0,0,.08);
+    }
+    .helpCard h1 { margin:0 0 8px; font-size:22px; }
+    .helpCard p { color:var(--muted); line-height:1.55; }
+    .buttonRow { display:flex; gap:8px; flex-wrap:wrap; margin-top:16px; }
+    button, a.button {
+      appearance:none; border:1px solid var(--border); border-radius:10px;
+      padding:10px 14px; background:var(--panel); color:var(--text);
+      font:inherit; font-weight:650; text-decoration:none; cursor:pointer;
+    }
+    button.primary { border-color:var(--accent); background:var(--accent); color:#fff; }
+  </style>
+</head>
+<body>
+  <div id="loading">
+    <div class="loadingInner">
+      <div class="mark">J</div>
+      <div class="title">Doug's Journal</div>
+      <div id="loadingText" class="message">Opening journal…</div>
+      <div class="spinner" aria-hidden="true"></div>
+    </div>
+  </div>
+
+  <iframe
+    id="appFrame"
+    title="Doug's Journal"
+    allow="geolocation; camera; microphone; clipboard-read; clipboard-write"
+  ></iframe>
+
+  <div id="help">
+    <div class="helpCard">
+      <h1>Journal did not finish opening</h1>
+      <p>
+        The GitHub page loaded, but the Apps Script journal may not have finished loading.
+        Try again first. If Google shows an iframe/access error, the Apps Script deployment
+        needs the ALLOWALL frame setting and a new deployment version.
+      </p>
+      <div class="buttonRow">
+        <button class="primary" onclick="location.reload()">Try again</button>
+        <a class="button" id="backendLink" target="_blank" rel="noopener">Open backend directly</a>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    'use strict';
+
+    const APPS_SCRIPT_URL =
+      'https://script.google.com/macros/s/AKfycbwp8L0guuDD7uK3pS00qiIJy9GUJusKNJumhqFlWqpGnqDBNkYO1fjiPooRYfiUNAUFdw/exec';
+
+    const frame = document.getElementById('appFrame');
+    const loading = document.getElementById('loading');
+    const loadingText = document.getElementById('loadingText');
+    const help = document.getElementById('help');
+    const backendLink = document.getElementById('backendLink');
+
+    function buildAppUrl() {
+      const url = new URL(APPS_SCRIPT_URL);
+      url.searchParams.set('embed', '1');
+      url.searchParams.set('host', 'github');
+      url.searchParams.set('v', 'journal-1.3');
+      return url.toString();
+    }
+
+    const appUrl = buildAppUrl();
+    backendLink.href = APPS_SCRIPT_URL;
+    frame.src = appUrl;
+
+    let loaded = false;
+    frame.addEventListener('load', () => {
+      loaded = true;
+      setTimeout(() => loading.classList.add('hidden'), 350);
+    });
+
+    // Do not leave the user staring at a spinner forever.
+    setTimeout(() => {
+      if (!loaded) {
+        loading.classList.add('hidden');
+        help.classList.add('show');
+      }
+    }, 12000);
+
+    window.addEventListener('message', event => {
+      const data = event.data || {};
+      if (!event.source || event.source === window) return;
+
+      if (data.type === 'dougs-journal-ready') {
+        loaded = true;
+        help.classList.remove('show');
+        loading.classList.add('hidden');
+      }
+
+      if (data.type === 'dougs-journal-auth-expired') {
+        loadingText.textContent = 'Journal login expired…';
+      }
+    });
+  </script>
+</body>
+</html>
