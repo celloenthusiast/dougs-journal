@@ -1,0 +1,22 @@
+Doug's Journal — required Apps Script patch
+
+Replace the doGet() function in Code.gs with:
+
+function doGet() {
+  return HtmlService.createTemplateFromFile('Index')
+    .evaluate()
+    .setTitle('Wiseman Journal')
+    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL)
+    .addMetaTag('viewport', 'width=device-width, initial-scale=1, viewport-fit=cover');
+}
+
+Then:
+1. Save Apps Script.
+2. Deploy > Manage deployments.
+3. Edit the web-app deployment.
+4. Select New version.
+5. Deploy.
+6. Keep Execute as Me and Who has access = Anyone.
+
+GitHub Pages URL:
+https://celloenthusiast.github.io/dougs-journal/
